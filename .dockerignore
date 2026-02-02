@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+.env.*
+*.md
+*.docx
+frontend/node_modules
+frontend/dist
+backend/venv
+backend/__pycache__
+backend/**/__pycache__
+*.pyc
+backend/*.sqlite3
+backend/data/*.json
+run-local.sh
+docker-compose.yml
+docker-compose.prod.yml

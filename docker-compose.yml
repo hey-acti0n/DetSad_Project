@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    image: detsad-backend
+    platform: linux/amd64
+    volumes:
+      - backend-data:/app/data
+    environment:
+      - DEBUG=0
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - CORS_ORIGINS=http://localhost:5173,http://localhost,http://127.0.0.1
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-change-me-in-production}
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    image: detsad-frontend
+    platform: linux/amd64
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:

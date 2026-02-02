@@ -1,0 +1,412 @@
+# Развёртывание «Эко-сад» в Yandex Cloud (один контейнер через Docker Hub)
+
+Приложение собирается в **один Docker-образ**, публикуется в Docker Hub; на виртуальной машине в Yandex Cloud образ только скачивается и запускается. Код на ВМ копировать не нужно.
+
+---
+
+## Что понадобится
+
+- Аккаунт в [Yandex Cloud](https://console.cloud.yandex.ru/)
+- Аккаунт на [Docker Hub](https://hub.docker.com/) (бесплатный)
+- Домен (опционально; можно открывать по IP)
+- Терминал и SSH-ключ (или пароль для ВМ)
+
+---
+
+## 1. Создать ВМ в Yandex Cloud
+
+1. Откройте [консоль Yandex Cloud](https://console.cloud.yandex.ru/) → каталог → **Compute Cloud** → **Виртуальные машины**.
+2. Нажмите **Создать ВМ**.
+3. Задайте:
+   - **Имя:** например `detsad-app`
+   - **Зона доступности:** любая (например, `ru-central1-a`)
+   - **Платформа:** Intel Broadwell
+   - **Образ:** **Ubuntu 22.04 LTS**
+   - **Диск:** 10–15 ГБ
+   - **Память:** 2 ГБ
+   - **Ядра:** 2
+   - **Публичный IP:** оставьте (авто)
+   - **Доступ:** логин и пароль или SSH-ключ (сохраните пароль/ключ)
+4. В разделе **Сетевые настройки** создайте или выберите сеть; проверьте, что есть **Публичный адрес**.
+5. В **Группа безопасности** (если есть):
+   - Разрешите входящий трафик: **TCP 22** (SSH), **TCP 8000** (приложение).
+6. Нажмите **Создать ВМ** и дождитесь запуска. Запишите **Публичный IP-адрес**.
+
+---
+
+## 2. Собрать образ и выложить в Docker Hub (на своём компьютере)
+
+В корне проекта DetSad (где лежит `Dockerfile`):
+
+1. Соберите образ под linux/amd64 (для совместимости с ВМ):
+
+```bash
+docker build --platform linux/amd64 -t ВАШ_ЛОГИН_DOCKERHUB/detsad:latest .
+```
+
+Замените `ВАШ_ЛОГИН_DOCKERHUB` на ваш логин на [hub.docker.com](https://hub.docker.com).
+
+2. Войдите в Docker Hub и отправьте образ:
+
+```bash
+docker login
+docker push ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+```
+
+---
+
+## 3. Подключиться к ВМ и установить Docker
+
+Подключитесь по SSH (подставьте свой IP и пользователя):
+
+```bash
+ssh -i /Users/acti0n/Documents/key action@<Public IP>
+# или: ssh yc-user@<ПУБЛИЧНЫЙ_IP>  — пользователь может быть другим, смотрите в консоли ВМ
+```
+
+Установите Docker:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+sudo usermod -aG docker $USER
+```
+
+Выйдите из SSH и зайдите снова, чтобы применилась группа `docker`:
+
+```bash
+exit
+ssh -i /Users/acti0n/Documents/key action@<Public IP>
+```
+
+Проверка:
+
+```bash
+docker --version
+```
+
+---
+
+## 4. Настроить переменные и запустить контейнер на ВМ
+
+1. Создайте каталог и файл с переменными окружения:
+
+```bash
+mkdir -p ~/DetSad
+cd ~/DetSad
+nano .env
+```
+
+2. Вставьте (подставьте свой IP или домен).
+
+**Что такое DJANGO_SECRET_KEY:** это случайная строка для подписи сессий и защиты от подделки запросов. Никому не показывайте и не публикуйте её. Сгенерировать новый ключ можно так (на своём компьютере или на ВМ):
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+Скопируйте вывод и вставьте в `.env` вместо значения ниже.
+
+**Если открываете приложение по IP:**
+
+```env
+DJANGO_SECRET_KEY=сюда-вставьте-результат-команды-выше
+ALLOWED_HOSTS=localhost,127.0.0.1,123.45.67.89
+CORS_ORIGINS=http://123.45.67.89
+```
+
+Замените `123.45.67.89` на публичный IP вашей ВМ. Значения `localhost,127.0.0.1` нужны, чтобы проверка `curl http://localhost:8000` с самой ВМ возвращала 200, а не 400.
+
+**Если уже настроили домен и HTTPS:**
+
+```env
+DJANGO_SECRET_KEY=сюда-вставьте-результат-команды-выше
+ALLOWED_HOSTS=localhost,127.0.0.1,ваш-домен.ru,www.ваш-домен.ru,123.45.67.89
+CORS_ORIGINS=https://ваш-домен.ru,https://www.ваш-домен.ru
+CSRF_TRUSTED_ORIGINS=https://ваш-домен.ru,https://www.ваш-домен.ru
+```
+
+Сохраните файл (Ctrl+O, Enter, Ctrl+X в nano).
+
+3. Скачайте образ и запустите контейнер. Том `detsad-data` нужен, чтобы **данные не терялись** при перезапуске или обновлении контейнера (группы, дети, события, БД админа):
+
+```bash
+docker pull ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+
+docker run -d \
+  --name detsad \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -v detsad-data:/app/data \
+  --env-file .env \
+  ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+```
+
+Замените `ВАШ_ЛОГИН_DOCKERHUB` на ваш образ из Docker Hub.
+
+4. Проверка:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8000
+# Должно вернуть 200
+```
+
+Если вернуло **400** — в `.env` в `ALLOWED_HOSTS` не хватает `localhost,127.0.0.1`. Добавьте их через запятую (без пробелов), например: `ALLOWED_HOSTS=localhost,127.0.0.1,158.160.125.170`, сохраните файл и перезапустите контейнер: `docker restart detsad`.
+
+5. Откройте в браузере: **`http://<ПУБЛИЧНЫЙ_IP>:8000`**.
+
+Админка: **`http://<ПУБЛИЧНЫЙ_IP>:8000/admin-login`** — логин `admin`, пароль `1111` (если не меняли в `scripts/init_admin.py`).
+
+---
+
+## 5. Открыть порт 8000 в интернет
+
+В консоли Yandex Cloud: **VPC** → **Группы безопасности** → группа вашей ВМ → добавьте правило **Входящий трафик**: порт **8000**, протокол TCP, источник **0.0.0.0/0**.
+
+После этого приложение будет доступно по `http://<ПУБЛИЧНЫЙ_IP>:8000`.
+
+---
+
+## 6. (Опционально) Домен и HTTPS — Nginx на ВМ
+
+Чтобы открывать сайт по домену на порту 80/443 без `:8000` в адресе:
+
+1. В DNS вашего домена создайте **A-запись**: имя `@` или `www` → значение **Публичный IP** ВМ.
+
+2. На ВМ установите Nginx и Certbot:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+```
+
+3. Создайте конфиг Nginx (проксирование на контейнер):
+
+```bash
+sudo nano /etc/nginx/sites-available/detsad
+```
+
+Вставьте (замените `ваш-домен.ru` на свой домен):
+
+```nginx
+server {
+    listen 80;
+    server_name ваш-домен.ru www.ваш-домен.ru;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Сохраните (Ctrl+O, Enter, Ctrl+X).
+
+4. Включите сайт и получите сертификат:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/detsad /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot --nginx -d ваш-домен.ru -d www.ваш-домен.ru
+```
+
+5. В `.env` на ВМ добавьте домен и HTTPS (перезапустите контейнер):
+
+```bash
+cd ~/DetSad
+nano .env
+```
+
+Добавьте или измените:
+
+```env
+ALLOWED_HOSTS=ваш-домен.ru,www.ваш-домен.ru,<ПУБЛИЧНЫЙ_IP>
+CORS_ORIGINS=https://ваш-домен.ru,https://www.ваш-домен.ru
+CSRF_TRUSTED_ORIGINS=https://ваш-домен.ru,https://www.ваш-домен.ru
+```
+
+Сохраните и перезапустите контейнер:
+
+```bash
+docker restart detsad
+```
+
+В группе безопасности Yandex Cloud откройте порты **80** и **443** (TCP), источник 0.0.0.0/0.
+
+---
+
+## Экономия места на ВМ (логи и данные)
+
+- **Логи:** приложение пишет только ошибки (уровень `error`), access-логи отключены. Файлы логов на диск не создаются — вывод идёт в консоль контейнера.
+- **Сессии:** хранятся в подписанной cookie (не в БД), таблица сессий не используется — чистить ничего не нужно.
+
+---
+
+## Полезные команды на ВМ
+
+| Действие | Команда |
+|----------|--------|
+| Логи приложения | `docker logs -f detsad` |
+| Остановить | `docker stop detsad` |
+| Запустить снова | `docker start detsad` |
+| Обновить образ и перезапустить | `docker pull ВАШ_ЛОГИН_DOCKERHUB/detsad:latest` затем `docker stop detsad` и `docker rm detsad`, затем снова `docker run -d ...` (как в разделе 4, шаг 3). Том `detsad-data` сохранит данные. |
+
+---
+
+## Если что-то пошло не так
+
+- **Не открывается по IP:8000** — проверьте группу безопасности (порт 8000), что контейнер запущен: `docker ps` (должен быть контейнер `detsad`).
+- **502 / ошибка при открытии** — смотрите логи: `docker logs detsad`. Убедитесь, что в `.env` указаны правильные `ALLOWED_HOSTS` и `CORS_ORIGINS` (IP или домен без лишних пробелов).
+- **DisallowedHost / Invalid HTTP_HOST header** — в `.env` в `ALLOWED_HOSTS` должен быть **IP вашей ВМ без порта** (например, `158.160.41.18`, не `158.160.41.18:8000`). Добавьте IP через запятую, сохраните `.env` и выполните `docker restart detsad`.
+- **Ошибки входа в админку** — при первом запуске админ создаётся автоматически (admin / 1111). Если не входит: `docker exec detsad python scripts/init_admin.py`, затем попробуйте снова.
+- **Данные пропали после перезапуска контейнера** — проверьте, что контейнер был запущен с томом `-v detsad-data:/app/data`. Без тома данные хранятся только внутри контейнера и теряются при `docker rm`.
+
+---
+
+## Обновление приложения до новой версии (данные сохраняются)
+
+Чтобы выкатить новую сборку и **сохранить все накопленные данные** (дети, группы, события, балансы, админы, итоги по месяцам): обновите образ и перезапустите контейнер, **не удаляя том** `detsad-data`. Данные лежат в томе; при замене только контейнера и образа том остаётся на диске ВМ.
+
+Если приложение уже запущено на ВМ и вы выложили новый образ в Docker Hub, обновите контейнер так.
+
+**Важно:** после обновления образа правила начисления очков на ВМ **не обновляются сами** — они хранятся в томе. Чтобы применить новые правила из кода, **на ВМ** выполните один раз (см. шаг ниже):
+`docker exec detsad python manage.py reset_actions_config`
+
+**1. На своём компьютере** (в корне проекта DetSad):
+
+```bash
+docker build --platform linux/amd64 -t ВАШ_ЛОГИН_DOCKERHUB/detsad:latest .
+docker push ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+```
+
+Замените `ВАШ_ЛОГИН_DOCKERHUB` на ваш логин на Docker Hub.
+
+**2. На ВМ** (подключитесь по SSH):
+
+```bash
+cd ~/DetSad
+
+# Скачать новый образ
+docker pull ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+
+# Остановить и удалить старый контейнер (данные в томе detsad-data сохраняются)
+docker stop detsad
+docker rm detsad
+
+# Запустить новый контейнер с теми же настройками
+docker run -d \
+  --name detsad \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -v detsad-data:/app/data \
+  --env-file .env \
+  ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+```
+
+**3. Проверка:**
+
+```bash
+docker ps
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8000
+```
+
+Должно вернуть `200`. Группы, дети, события, админы и воспитатели не теряются — они хранятся в томе `detsad-data`.
+
+**Обязательный шаг после обновления образа:** правила начисления (actions_config.json) лежат в томе и не перезаписываются при перезапуске. Чтобы применить новые правила из кода, **на ВМ** выполните:
+
+```bash
+docker exec detsad python manage.py reset_actions_config
+```
+
+После этого `actions_config.json` будет перезаписан значениями из кода (монеты, кулдауны, лимиты по действиям). Приложение берёт правила с бэкенда (GET `/api/v1/game/actions`), поэтому после сброса достаточно **обновить страницу** в браузере — на кнопках появятся актуальные названия и «+N» Экошей.
+
+**Правила начисления в коде** (файл `backend/core/storage.py`, константа `DEFAULT_ACTIONS`):
+
+| Действие           | Экоши | Кулдаун (сек) | Лимит в день |
+|--------------------|-------|----------------|--------------|
+| Закрытие крана     | 2     | 30             | 20           |
+| Макулатура         | 3     | 60             | 15           |
+| Батарейка          | 5     | 60             | 10           |
+| Пластиковые крышки | 2     | 60             | 20           |
+| Сортировка мусора  | 2     | 30             | 20           |
+
+---
+
+## Полный сброс: новый контейнер и данные с нуля
+
+Если нужно **полностью пересобрать окружение** — новый контейнер и **все данные из кода** (дефолтные группы, дети, правила начисления, админ и воспитатели из `init_admin`), удалите контейнер **и том** с данными, затем запустите контейнер заново.
+
+**Внимание: все текущие данные будут удалены** (дети, группы, события, админы, итоги по месяцам).
+
+**На ВМ:**
+
+```bash
+cd ~/DetSad
+
+# Остановить и удалить контейнер
+docker stop detsad
+docker rm detsad
+
+# Удалить том с данными (без него при следующем запуске создастся пустой каталог /app/data)
+docker volume rm detsad-data
+
+# Скачать свежий образ (если ещё не скачан)
+docker pull ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+
+# Запустить контейнер — том detsad-data создастся заново, entrypoint выполнит миграции и init_admin
+docker run -d \
+  --name detsad \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -v detsad-data:/app/data \
+  --env-file .env \
+  ВАШ_ЛОГИН_DOCKERHUB/detsad:latest
+```
+
+После запуска в `/app/data` появятся файлы, созданные при старте: дефолтные группы и дети (если их не было), правила начисления из кода, админ (admin/1111) и 10 воспитателей (teremok1…teremok10), 10 групп с названиями «1»…«10». События и итоги по месяцам будут пустыми.
+
+---
+
+## Полный сброс при локальном запуске (ваш компьютер, docker-compose)
+
+Если вы запускаете проект **локально через docker-compose** и контейнер «помнит» старые правила или данные — это из‑за именованного тома `backend-data`. Его нужно удалить, затем поднять контейнеры заново.
+
+**На вашем компьютере (в каталоге проекта):**
+
+```bash
+cd /Users/acti0n/Documents/DetSad   # или ваш путь к проекту
+
+# Остановить и удалить контейнеры
+docker compose down
+
+# Узнать точное имя тома (имя проекта = имя папки, например DetSad → DetSad_backend-data)
+docker volume ls | grep backend
+
+# Удалить том с данными (подставьте имя из вывода выше)
+docker volume rm DetSad_backend-data
+
+# При необходимости пересобрать образы
+docker compose build --no-cache
+
+# Запустить заново — том создастся пустым, entrypoint заполнит данные из кода
+docker compose up -d
+```
+
+Если `docker volume rm` выдаст ошибку «no such volume», посмотрите точное имя тома:
+
+```bash
+docker volume ls | grep backend
+```
+
+Удалите тот том, который относится к проекту (например `detsad_backend-data` — имя папки проекта в нижнем регистре + `_backend-data`). Затем снова выполните `docker compose up -d`.
+
+После этого при первом старте в `/app/data` подтянутся актуальные правила начисления, группы, админ и воспитатели из кода (init_admin и т.д.).
