@@ -26,6 +26,14 @@ def csrf_set(request):
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+def groups_list(request):
+    """GET /api/v1/groups — список групп (id, name) для выбора на первом экране."""
+    groups = storage.get_groups()
+    return Response([{"id": g["id"], "name": g.get("name", g["id"])} for g in groups])
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
 def children_list(request):
     """GET /api/v1/children — список детей (id, fullName, groupId, balance)."""
     children = storage.get_children()

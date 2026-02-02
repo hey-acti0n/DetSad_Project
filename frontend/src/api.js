@@ -15,6 +15,12 @@ const fetchOpts = (method, body, credentials = 'include') => {
   return { method, headers, body: body ? JSON.stringify(body) : undefined, credentials }
 }
 
+export async function getGroups() {
+  const r = await fetch(`${API_BASE}/groups`, fetchOpts('GET'))
+  if (!r.ok) throw new Error('Не удалось загрузить список групп')
+  return r.json()
+}
+
 export async function getChildren() {
   const r = await fetch(`${API_BASE}/children`, fetchOpts('GET'))
   if (!r.ok) throw new Error('Не удалось загрузить список детей')

@@ -372,8 +372,17 @@ export default function AdminPanel() {
             </div>
           )}
           {childDetail && (
-            <div className="child-detail-modal">
-              <div className="child-detail-card">
+            <div className="child-detail-modal" onClick={() => setChildDetail(null)}>
+              <div className="child-detail-card" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="modal-close-x"
+                  onClick={() => setChildDetail(null)}
+                  aria-label="Закрыть"
+                  title="Закрыть"
+                >
+                  ×
+                </button>
                 <h3>{childDetail.fullName}</h3>
                 <p>Баланс: {childDetail.balance}</p>
                 <BalanceAdjustForm childId={childDetail.id} onAdjust={handleBalanceAdjust} />

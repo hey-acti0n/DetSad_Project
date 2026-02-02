@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path("csrf-set", views.csrf_set),
+    path("groups", views.groups_list),
     path("children", views.children_list),
     path("game/actions", views.game_actions),
     path("game/interaction", views.game_interaction),
