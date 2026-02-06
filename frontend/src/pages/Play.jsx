@@ -92,7 +92,7 @@ export default function Play() {
               onClick={goBackToGroups}
               aria-label="Назад к группам"
             >
-              ← К группам
+              ← Группы
             </button>
             <Link
               to={`/our-tree?group=${encodeURIComponent(groupId || '')}`}

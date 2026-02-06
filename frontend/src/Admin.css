@@ -210,6 +210,34 @@
   color: #666;
   margin: 1rem 0;
 }
+.admin-section-desc {
+  color: #666;
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+}
+.admin-tree-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+.admin-tree-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  border-radius: 12px;
+  background: #e8f5e9;
+  border: 1px solid #81c784;
+  color: #2e7d32;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.admin-tree-btn:hover {
+  background: #c8e6c9;
+  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
+}
 .loading {
   margin: 0.5rem 0;
   color: #666;

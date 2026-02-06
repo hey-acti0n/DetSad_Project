@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { getChildren } from '../api'
+import { getChildren, adminMe } from '../api'
 import tree1 from '../../icons/tree_1.avif'
 import tree2 from '../../icons/tree_2.avif'
 import tree3 from '../../icons/tree_3.avif'
@@ -35,6 +35,13 @@ export default function OurTree() {
   const [groupName, setGroupName] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [showAdminBack, setShowAdminBack] = useState(false)
+
+  useEffect(() => {
+    adminMe()
+      .then(() => setShowAdminBack(true))
+      .catch(() => setShowAdminBack(false))
+  }, [])
 
   useEffect(() => {
     if (!groupId) {
@@ -83,9 +90,16 @@ export default function OurTree() {
               style={{ width: treeSize, height: treeSize }}
             />
             <p className="tree-coins">Экошей в группе: {totalCoins}</p>
-            <Link to="/" className="btn-back-link">
-              ← Назад к игре
-            </Link>
+            <div className="tree-actions">
+              {showAdminBack && (
+                <Link to="/admin" className="btn-back-link btn-admin-back">
+                  ← В админку
+                </Link>
+              )}
+              <Link to="/" className="btn-back-link">
+                ← Назад к игре
+              </Link>
+            </div>
           </>
         )}
       </section>

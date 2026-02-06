@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   adminCheckAuth,
   adminLogout,
@@ -16,6 +16,7 @@ import {
   adminChildCreate,
   adminChildUpdate,
   adminChildDelete,
+  getGroups,
 } from '../api'
 
 const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
@@ -48,6 +49,8 @@ export default function AdminPanel() {
   const [ratingLoading, setRatingLoading] = useState(false)
   const [monthlyResults, setMonthlyResults] = useState([])
   const [monthlyLoading, setMonthlyLoading] = useState(false)
+  const [treeGroups, setTreeGroups] = useState([])
+  const [treeGroupsLoading, setTreeGroupsLoading] = useState(false)
   const [me, setMe] = useState(null)
   const navigate = useNavigate()
   const isEducator = me?.role === 'educator'
@@ -111,6 +114,21 @@ export default function AdminPanel() {
       .then(setMonthlyResults)
       .finally(() => setMonthlyLoading(false))
   }, [auth, activeTab])
+
+  useEffect(() => {
+    if (!auth || activeTab !== 'trees') return
+    setTreeGroupsLoading(true)
+    getGroups()
+      .then((list) => {
+        if (isEducator && me?.group_id) {
+          return list.filter((g) => g.id === me.group_id)
+        }
+        return list
+      })
+      .then(setTreeGroups)
+      .catch(() => setTreeGroups([]))
+      .finally(() => setTreeGroupsLoading(false))
+  }, [auth, activeTab, isEducator, me?.group_id])
 
   const handleLogout = () => {
     adminLogout().then(() => navigate('/', { replace: true }))
@@ -208,6 +226,9 @@ export default function AdminPanel() {
         <button type="button" className={activeTab === 'monthly' ? 'active' : ''} onClick={() => setActiveTab('monthly')}>
           Итоги по месяцам
         </button>
+        <button type="button" className={activeTab === 'trees' ? 'active' : ''} onClick={() => setActiveTab('trees')}>
+          Деревья
+        </button>
       </nav>
 
       {loading && <p className="loading">Загрузка...</p>}
@@ -265,6 +286,29 @@ export default function AdminPanel() {
                 />
               </div>
             </div>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'trees' && (
+        <section className="admin-section">
+          <h2 className="admin-section-title">Дерево группы</h2>
+          {treeGroupsLoading && <p className="loading">Загрузка...</p>}
+          {!treeGroupsLoading && (
+            <div className="admin-tree-buttons">
+              {treeGroups.map((g) => (
+                <Link
+                  key={g.id}
+                  to={`/our-tree?group=${encodeURIComponent(g.id)}&from=admin`}
+                  className="admin-tree-btn"
+                >
+                  Группа {g.name}
+                </Link>
+              ))}
+            </div>
+          )}
+          {!treeGroupsLoading && treeGroups.length === 0 && (
+            <p className="admin-empty">Нет групп</p>
           )}
         </section>
       )}
