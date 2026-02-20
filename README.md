@@ -1,16 +1,36 @@
-# Эко-сад — веб-приложение для детского сада
+# Эко-сад
 
-Мини-игра с эко-монетами: дети выбирают себя на главной странице, взаимодействуют с объектами (кран, коробка, метла), получают анимацию и начисление монет. Администратор входит в панель и просматривает статистику.
+Веб-приложение для детского сада: мини-игра с эко-монетами («Экоши»). Дети выбирают себя на экране, выполняют экологичные действия (закрыть кран, сдать макулатуру, сортировать мусор и т.д.), получают начисление монет. Воспитатели и администратор заходят в панель управления: статистика по группам и детям, события, корректировка баланса, месячные итоги.
+
+Подходит для планшетов и телефонов, работает как **PWA** (можно установить на домашний экран).
+
+---
+
+## Возможности
+
+- **Детский интерфейс:** выбор группы → выбор ребёнка → игровая сцена с действиями (кран, макулатура, батарейки, крышки, сортировка). Начисление монет с кулдауном и дневным лимитом.
+- **Дерево достижений:** общая страница «Наше дерево» по группе.
+- **Админ-панель:** вход для администратора и воспитателей (доступ по группам). Статистика по группам и детям, журнал событий, корректировка баланса, месячные результаты и настройка действий.
+- **Офлайн-режим:** PWA с кэшированием, можно добавить на экран и использовать при нестабильном интернете.
+
+---
 
 ## Стек
 
-- **Frontend:** React 18, React Router, Vite
-- **Backend:** Django 5, Django REST Framework
-- **Хранение:** JSON-файлы (группы, дети, события) + SQLite для авторизации админа
+| Часть      | Технологии |
+|------------|------------|
+| Frontend   | React 18, React Router, Vite, PWA (vite-plugin-pwa) |
+| Backend    | Django 5, Django REST Framework, Gunicorn, WhiteNoise |
+| Данные     | JSON-файлы (группы, дети, события, настройки действий, админы) + SQLite (сессии Django) |
+| Развёртывание | Docker (один образ или docker-compose), Yandex Cloud |
 
-## Запуск локально (без Docker)
+---
 
-### Backend
+## Быстрый старт
+
+### Локально (без Docker)
+
+**Backend:**
 
 ```bash
 cd backend
@@ -18,13 +38,13 @@ python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python manage.py migrate
-python scripts/init_admin.py   # создаёт admin / admin
+python scripts/init_admin.py
 python manage.py runserver
 ```
 
-API: http://localhost:8000
+API: **http://localhost:8000**
 
-### Frontend
+**Frontend:**
 
 ```bash
 cd frontend
@@ -32,54 +52,44 @@ npm install
 npm run dev
 ```
 
-Приложение: http://localhost:5173 (прокси на backend настроен в `vite.config.js`).
+Приложение: **http://localhost:5173** (прокси на backend в `vite.config.js`).
 
-**Вход в админку:** http://localhost:5173/admin-login — логин `admin`, пароль `1111`.
-
-### PWA (установка на телефон/планшет)
-
-После сборки (`npm run build`) приложение можно установить как PWA: «Добавить на экран» (Android) или «На экран Домой» (iOS). Иконки приложения лежат в `frontend/public/` (`icon-192.png`, `icon-512.png`). Для своего логотипа замените их на квадратные изображения 192×192 и 512×512 px.
+**Вход в админку:**  
+- Администратор: `tusikbuch` / `10055055`  
+- Воспитатели: `teremok1` / `teremok1` … `teremok10` / `teremok10` (доступ к своей группе).  
+Логины и пароли задаются в `backend/scripts/init_admin.py`.
 
 ---
 
-## Запуск в Docker (staging/production)
+### Docker (один контейнер)
 
-Сборка для **linux/amd64** (совместимость с ВМ в Yandex Cloud):
+В корне проекта:
+
+```bash
+docker build --platform linux/amd64 -t detsad:latest .
+docker run -d -p 8000:8000 -v detsad-data:/app/data -e DJANGO_SECRET_KEY=your-secret -e ALLOWED_HOSTS=localhost,127.0.0.1 detsad:latest
+```
+
+Откройте **http://localhost:8000** (статика и API в одном контейнере).
+
+---
+
+### Docker Compose (frontend + backend)
 
 ```bash
 docker compose build
 docker compose up -d
 ```
 
-Приложение: http://localhost (порт 80).  
-Админка: http://localhost/admin-login (логин `admin`, пароль `admin`).
-
-Для production задайте переменные окружения:
-
-- `DJANGO_SECRET_KEY` — секретный ключ Django
-- В `docker-compose.yml` в `ALLOWED_HOSTS` и `CORS_ORIGINS` укажите ваш домен
+Приложение: **http://localhost** (порт 80). Админка: **http://localhost/admin-login**.
 
 ---
 
-## Развёртывание в Yandex Cloud
+## Развёртывание в облаке
 
-Подробная пошаговая инструкция: **[DEPLOY_YANDEX.md](DEPLOY_YANDEX.md)**.
+Пошаговая инструкция по развёртыванию в **Yandex Cloud** (ВМ, один образ из Docker Hub или docker-compose, домен, HTTPS): **[DEPLOY_YANDEX.md](DEPLOY_YANDEX.md)**.
 
-**Вариант с одним контейнером (Docker Hub):** можно собрать один образ со всем приложением, выложить в Docker Hub и на ВМ только выполнить `docker run` (без копирования кода). В корне проекта:
-
-```bash
-docker build --platform linux/amd64 -t ВАШ_ЛОГИН/detsad:latest .
-docker push ВАШ_ЛОГИН/detsad:latest
-```
-
-На ВМ: установите Docker, создайте `.env` с `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `CORS_ORIGINS`, затем `docker run -d -p 8000:8000 --env-file .env ВАШ_ЛОГИН/detsad:latest`. Подробности — разделы **3а** и **5а** в DEPLOY_YANDEX.md.
-
-**Вариант с docker-compose (два контейнера):**
-1. Создайте ВМ в Yandex Cloud (Ubuntu 22.04), откройте порт 80.
-2. Установите Docker и Docker Compose на ВМ.
-3. Скопируйте проект на ВМ, создайте `.env` из `.env.example`, задайте `ALLOWED_HOSTS` и `CORS_ORIGINS` (IP или домен).
-4. Запустите: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
-5. Откройте в браузере: `http://<ПУБЛИЧНЫЙ_IP>`. Для домена и HTTPS см. раздел 7 в DEPLOY_YANDEX.md.
+Рекомендуемые ресурсы ВМ для ~300 пользователей (по 2 действия в день): **2 ГБ RAM**, **15 ГБ диск**, 2 ядра. Подробный разбор — в разделе «Ресурсы ВМ» в DEPLOY_YANDEX.md.
 
 ---
 
@@ -87,28 +97,56 @@ docker push ВАШ_ЛОГИН/detsad:latest
 
 ```
 DetSad/
-├── backend/           # Django API
-│   ├── config/         # settings, urls
-│   ├── api/            # views, urls API
-│   ├── core/           # storage.py — работа с JSON
-│   ├── data/           # groups.json, children.json, events.json, db.sqlite3
-│   ├── scripts/        # init_admin.py
-│   └── Dockerfile
-├── frontend/           # React SPA
+├── backend/                 # Django API
+│   ├── config/              # settings, urls
+│   ├── api/                 # views, auth, urls API
+│   ├── core/                # storage.py — работа с JSON (группы, дети, события)
+│   ├── data/                # seed: groups.json, children.json и др.
+│   ├── scripts/             # init_admin.py
+│   ├── entrypoint.sh
+│   └── requirements.txt
+├── frontend/                # React SPA
 │   ├── src/
-│   │   ├── pages/      # Home, AdminLogin, AdminPanel
-│   │   ├── components/ # ChildCards, GameScene
+│   │   ├── pages/           # GroupSelect, Play, OurTree, AdminLogin, AdminPanel
+│   │   ├── components/
 │   │   └── api.js
-│   └── Dockerfile
+│   ├── index.html
+│   └── vite.config.js
 ├── docker-compose.yml
+├── docker-compose.prod.yml
+├── Dockerfile               # единый образ (frontend + backend)
+├── DEPLOY_YANDEX.md
 └── README.md
 ```
 
+Данные в проде хранятся в томе Docker `detsad-data` → `/app/data` (JSON + `db.sqlite3`).
+
+---
+
 ## API (кратко)
 
-- `GET /api/v1/children` — список детей
-- `POST /api/v1/game/interaction` — тело `{ "childId", "actionId" }` (crane / box / broom)
-- `POST /api/v1/admin/login` — логин админа
-- `GET /api/v1/admin/stats/groups`, `GET /api/v1/admin/stats/children`, `GET /api/v1/admin/child/:id/events`, `POST /api/v1/admin/child/:id/balance-adjust` и др.
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/api/v1/groups` | Список групп |
+| GET | `/api/v1/children` | Список детей |
+| GET | `/api/v1/game/actions` | Настройки действий (монеты, кулдаун, лимиты) |
+| POST | `/api/v1/game/interaction` | Начисление за действие: `{ "childId", "actionId" }` |
+| POST | `/api/v1/admin/login` | Вход в админку |
+| GET | `/api/v1/admin/stats/groups`, `.../stats/children` | Статистика |
+| GET | `/api/v1/admin/events` | Журнал событий с фильтрами |
+| GET/POST | `/api/v1/admin/monthly-results`, `.../monthly-stats` | Месячные итоги |
+| POST | `/api/v1/admin/child/<id>/balance-adjust` | Корректировка баланса |
 
-Правила начисления и лимиты задаются в `backend/data/actions_config.json` (и создаются по умолчанию при первом запуске).
+Правила начисления (действия, монеты, кулдаун, дневной лимит) задаются в данных `actions_config` (по умолчанию создаются из `backend/data/` или из кода при первом запуске).
+
+---
+
+## PWA
+
+После сборки (`npm run build`) приложение можно установить на устройство: «Добавить на экран» (Android) или «На экран Домой» (iOS). Иконки — в `frontend/public/` (замените на свои 192×192 и 512×512 px при необходимости).
+
+---
+
+## Лицензия
+
+Проект можно использовать и дорабатывать по своему усмотрению (уточните лицензию в репозитории при публикации).

@@ -206,6 +206,108 @@
   font-weight: 600;
   color: #1b5e20;
 }
+
+.admin-monthly-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+.admin-monthly-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+  color: #333;
+}
+.admin-monthly-filters select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #81c784;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #fff;
+}
+.admin-monthly-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e0e0e0;
+}
+.admin-monthly-card-title {
+  margin: 0 0 1rem;
+  font-size: 1.35rem;
+  color: #1b5e20;
+}
+.admin-monthly-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e8e8e8;
+}
+.admin-monthly-summary span {
+  color: #555;
+  font-size: 0.95rem;
+}
+.admin-monthly-summary strong {
+  color: #1b5e20;
+}
+.admin-monthly-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+.admin-monthly-block {
+  background: #f8faf8;
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid #e8f5e9;
+}
+.admin-monthly-block h4 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #2e7d32;
+}
+.admin-monthly-block ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #333;
+}
+.admin-monthly-block ul .place {
+  font-weight: 700;
+  color: #2e7d32;
+  margin-right: 0.25rem;
+}
+.admin-monthly-by-action li {
+  margin-bottom: 0.25rem;
+}
+.admin-section-subtitle {
+  margin: 1rem 0 0.5rem;
+  font-size: 1.1rem;
+  color: #558b2f;
+}
+.admin-monthly-table-wrap {
+  margin-top: 1rem;
+}
+.admin-month-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: #2e7d32;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.admin-month-link:hover {
+  color: #1b5e20;
+}
+
 .admin-empty {
   color: #666;
   margin: 1rem 0;

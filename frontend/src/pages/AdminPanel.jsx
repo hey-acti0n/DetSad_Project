@@ -10,6 +10,7 @@ import {
   adminEvents,
   adminBalanceAdjust,
   adminMonthlyResults,
+  adminMonthlyStats,
   adminGroupCreate,
   adminGroupUpdate,
   adminGroupDelete,
@@ -49,6 +50,10 @@ export default function AdminPanel() {
   const [ratingLoading, setRatingLoading] = useState(false)
   const [monthlyResults, setMonthlyResults] = useState([])
   const [monthlyLoading, setMonthlyLoading] = useState(false)
+  const [monthlyGroupFilter, setMonthlyGroupFilter] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(null)
+  const [monthlyStats, setMonthlyStats] = useState(null)
+  const [monthlyStatsLoading, setMonthlyStatsLoading] = useState(false)
   const [treeGroups, setTreeGroups] = useState([])
   const [treeGroupsLoading, setTreeGroupsLoading] = useState(false)
   const [me, setMe] = useState(null)
@@ -110,10 +115,30 @@ export default function AdminPanel() {
   useEffect(() => {
     if (!auth || activeTab !== 'monthly') return
     setMonthlyLoading(true)
-    adminMonthlyResults()
-      .then(setMonthlyResults)
+    adminMonthlyResults(monthlyGroupFilter || undefined)
+      .then((list) => {
+        setMonthlyResults(list)
+        if (list.length === 0) setSelectedMonth(null)
+        else if (!selectedMonth) {
+          const first = list[list.length - 1]
+          setSelectedMonth({ year: first.year, month: first.month })
+        }
+      })
       .finally(() => setMonthlyLoading(false))
-  }, [auth, activeTab])
+  }, [auth, activeTab, monthlyGroupFilter])
+
+  useEffect(() => {
+    if (!auth || activeTab !== 'monthly' || !selectedMonth) {
+      setMonthlyStats(null)
+      return
+    }
+    setMonthlyStatsLoading(true)
+    setMonthlyStats(null)
+    adminMonthlyStats(selectedMonth.year, selectedMonth.month, monthlyGroupFilter || undefined)
+      .then(setMonthlyStats)
+      .catch(() => setMonthlyStats(null))
+      .finally(() => setMonthlyStatsLoading(false))
+  }, [auth, activeTab, selectedMonth?.year, selectedMonth?.month, monthlyGroupFilter])
 
   useEffect(() => {
     if (!auth || activeTab !== 'trees') return
@@ -461,51 +486,158 @@ export default function AdminPanel() {
       {activeTab === 'monthly' && (
         <section className="admin-section">
           <h2 className="admin-section-title">Итоги по месяцам (баланс обнуляется в конце каждого месяца)</h2>
+
+          <div className="admin-monthly-filters">
+            <label>
+              Группа{' '}
+              <select value={monthlyGroupFilter} onChange={(e) => setMonthlyGroupFilter(e.target.value)}>
+                <option value="">Все группы</option>
+                {groups.map((g) => (
+                  <option key={g.groupId} value={g.groupId}>{g.groupName}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Месяц{' '}
+              <select
+                value={selectedMonth ? `${selectedMonth.year}-${selectedMonth.month}` : ''}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (!v) return
+                  const [y, m] = v.split('-').map(Number)
+                  setSelectedMonth({ year: y, month: m })
+                }}
+              >
+                <option value="">— выберите —</option>
+                {[...monthlyResults].reverse().map((row) => (
+                  <option key={`${row.year}-${row.month}`} value={`${row.year}-${row.month}`}>
+                    {MONTH_NAMES[(row.month || 1) - 1]} {row.year}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           {monthlyLoading && <p className="loading">Загрузка...</p>}
           {!monthlyLoading && monthlyResults.length === 0 && (
             <p className="admin-empty">Пока нет сохранённых итогов. Итоги появятся после первого перехода в новый месяц.</p>
           )}
-          {!monthlyLoading && monthlyResults.length > 0 && (() => {
-            const childList = []
-            const seen = new Set()
-            monthlyResults.forEach((row) => {
-              (row.children || []).forEach((ch) => {
-                if (!seen.has(ch.childId)) {
-                  seen.add(ch.childId)
-                  childList.push(ch)
-                }
-              })
-            })
-            return (
-              <div className="admin-table-wrap">
-                <table className="admin-table admin-table-monthly">
-                  <thead>
-                    <tr>
-                      <th>Месяц</th>
-                      {childList.map((ch) => (
-                        <th key={ch.childId}>{ch.fullName || ch.childId}</th>
-                      ))}
-                      <th>Всего Экошей</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {monthlyResults.map((row, idx) => {
-                      const childMap = Object.fromEntries((row.children || []).map((ch) => [ch.childId, ch.balance]))
-                      return (
-                        <tr key={`${row.year}-${row.month}-${idx}`}>
-                          <td>{MONTH_NAMES[(row.month || 1) - 1]} {row.year}</td>
-                          {childList.map((ch) => (
-                            <td key={ch.childId}>{childMap[ch.childId] ?? '—'}</td>
+
+          {!monthlyLoading && selectedMonth && (
+            <>
+              {monthlyStatsLoading && <p className="loading">Загрузка статистики...</p>}
+              {!monthlyStatsLoading && monthlyStats && (
+                <div className="admin-monthly-card">
+                  <h3 className="admin-monthly-card-title">
+                    {MONTH_NAMES[(monthlyStats.month || 1) - 1]} {monthlyStats.year}
+                  </h3>
+                  <div className="admin-monthly-summary">
+                    <span>Всего Экошей: <strong>{monthlyStats.summary?.totalCoins ?? 0}</strong></span>
+                    <span>Действий за месяц: <strong>{monthlyStats.summary?.totalActions ?? 0}</strong></span>
+                    <span>Детей: <strong>{monthlyStats.summary?.childrenCount ?? 0}</strong></span>
+                    <span>В среднем на ребёнка: <strong>{monthlyStats.summary?.avgCoinsPerChild ?? 0}</strong> Экошей</span>
+                  </div>
+                  <div className="admin-monthly-blocks">
+                    <div className="admin-monthly-block">
+                      <h4>Эко-звёзды месяца (по баллам)</h4>
+                      <ul>
+                        {(monthlyStats.topChildrenByCoins || []).slice(0, 10).map((ch, i) => (
+                          <li key={ch.childId}><span className="place">{i + 1}.</span> {ch.fullName || ch.childId} — {ch.balance ?? 0} Экошей {ch.groupName ? `(${ch.groupName})` : ''}</li>
+                        ))}
+                      </ul>
+                      {(monthlyStats.topChildrenByCoins || []).length === 0 && <p className="admin-empty">Нет данных</p>}
+                    </div>
+                    <div className="admin-monthly-block">
+                      <h4>Самые активные (по действиям)</h4>
+                      <ul>
+                        {(monthlyStats.topChildrenByActions || []).slice(0, 10).map((ch, i) => (
+                          <li key={ch.childId}><span className="place">{i + 1}.</span> {ch.fullName || ch.childId} — {ch.actionsCount} действий {ch.groupName ? `(${ch.groupName})` : ''}</li>
+                        ))}
+                      </ul>
+                      {(monthlyStats.topChildrenByActions || []).length === 0 && <p className="admin-empty">Нет данных</p>}
+                    </div>
+                  </div>
+                  <div className="admin-monthly-blocks">
+                    <div className="admin-monthly-block">
+                      <h4>По типам действий</h4>
+                      <ul className="admin-monthly-by-action">
+                        {(monthlyStats.byAction || []).map((a) => (
+                          <li key={a.actionId}>{a.actionName}: <strong>{a.count}</strong> раз, {a.totalCoins} Экошей</li>
+                        ))}
+                      </ul>
+                      {(monthlyStats.byAction || []).length === 0 && <p className="admin-empty">Нет данных</p>}
+                    </div>
+                    <div className="admin-monthly-block">
+                      <h4>По группам</h4>
+                      <ul>
+                        {(monthlyStats.byGroup || []).map((g) => (
+                          <li key={g.groupId}>{g.groupName}: всего <strong>{g.totalCoins}</strong> Экошей, детей {g.childrenCount}, в среднем {g.avgCoins} Экошей</li>
+                        ))}
+                      </ul>
+                      {(monthlyStats.byGroup || []).length === 0 && <p className="admin-empty">Нет данных</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {!monthlyLoading && monthlyResults.length > 0 && (
+            <div className="admin-monthly-table-wrap">
+              <h3 className="admin-section-subtitle">Все месяцы</h3>
+              {(() => {
+                const childList = []
+                const seen = new Set()
+                monthlyResults.forEach((row) => {
+                  (row.children || []).forEach((ch) => {
+                    if (!seen.has(ch.childId)) {
+                      seen.add(ch.childId)
+                      childList.push(ch)
+                    }
+                  })
+                })
+                return (
+                  <div className="admin-table-wrap">
+                    <table className="admin-table admin-table-monthly">
+                      <thead>
+                        <tr>
+                          <th>Месяц</th>
+                          {childList.slice(0, 12).map((ch) => (
+                            <th key={ch.childId}>{ch.fullName || ch.childId}</th>
                           ))}
-                          <td className="admin-monthly-total">{row.totalSum ?? 0}</td>
+                          {childList.length > 12 && <th>…</th>}
+                          <th>Всего Экошей</th>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )
-          })()}
+                      </thead>
+                      <tbody>
+                        {monthlyResults.map((row, idx) => {
+                          const childMap = Object.fromEntries((row.children || []).map((ch) => [ch.childId, ch.balance]))
+                          return (
+                            <tr key={`${row.year}-${row.month}-${idx}`}>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="admin-month-link"
+                                  onClick={() => setSelectedMonth({ year: row.year, month: row.month })}
+                                >
+                                  {MONTH_NAMES[(row.month || 1) - 1]} {row.year}
+                                </button>
+                              </td>
+                              {childList.slice(0, 12).map((ch) => (
+                                <td key={ch.childId}>{childMap[ch.childId] ?? '—'}</td>
+                              ))}
+                              {childList.length > 12 && <td>…</td>}
+                              <td className="admin-monthly-total">{row.totalSum ?? 0}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
         </section>
       )}
 

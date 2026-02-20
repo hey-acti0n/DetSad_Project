@@ -6,7 +6,7 @@ import fcntl
 import logging
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -546,6 +546,123 @@ def get_monthly_results(group_id=None):
             out.append({**row, "children": children, "totalSum": total_sum})
         return out
     return results
+
+
+def _month_range(year, month):
+    """Возвращает (from_date, to_date) в формате YYYY-MM-DD для данного месяца."""
+    from_date = date(year, month, 1).strftime("%Y-%m-%d")
+    if month == 12:
+        last = date(year, 12, 31)
+    else:
+        last = date(year, month + 1, 1) - timedelta(days=1)
+    to_date = last.strftime("%Y-%m-%d")
+    return from_date, to_date
+
+
+def get_monthly_stats(year, month, group_id=None):
+    """Расширенная статистика за один месяц: итоги, по действиям, топы по баллам и по активности.
+    Использует снимок из monthly_results для баллов и события за месяц для активности."""
+    _ensure_defaults()
+    from_date, to_date = _month_range(year, month)
+    results = _read_json_any("monthly_results") or []
+    row = None
+    for r in reversed(results):
+        if r.get("year") == year and r.get("month") == month:
+            row = r
+            break
+    children_snapshot = (row.get("children") or []) if row else []
+    if group_id:
+        children_snapshot = [c for c in children_snapshot if c.get("groupId") == group_id]
+    total_coins = sum(c.get("balance", 0) for c in children_snapshot)
+    children_count = len(children_snapshot)
+    avg_coins = round(total_coins / children_count, 1) if children_count else 0
+
+    events = get_events()
+    events = [e for e in events if _event_date(e.get("timestamp")) >= from_date and _event_date(e.get("timestamp")) <= to_date]
+    if group_id:
+        child_ids_in_group = {c.get("childId") for c in children_snapshot}
+        if not child_ids_in_group:
+            current_children = get_children()
+            child_ids_in_group = {c["id"] for c in current_children if c.get("groupId") == group_id}
+        events = [e for e in events if e.get("childId") in child_ids_in_group]
+
+    total_actions = len(events)
+    actions_config = get_actions_config()
+    actions_dict = {a["id"]: a.get("name", a["id"]) for a in actions_config}
+    actions_dict["balance_adjust"] = "Корректировка баланса"
+
+    by_action = {}
+    for e in events:
+        aid = e.get("actionId") or "?"
+        if aid not in by_action:
+            by_action[aid] = {"actionId": aid, "actionName": actions_dict.get(aid, aid), "count": 0, "totalCoins": 0}
+        by_action[aid]["count"] += 1
+        by_action[aid]["totalCoins"] += e.get("credited", 0)
+    by_action_list = sorted(by_action.values(), key=lambda x: -x["count"])
+
+    child_actions = {}
+    for e in events:
+        cid = e.get("childId")
+        if cid:
+            child_actions[cid] = child_actions.get(cid, 0) + 1
+    children_names = {c.get("childId"): c.get("fullName", "") for c in children_snapshot}
+    child_to_group = {c.get("childId"): c.get("groupId") for c in children_snapshot}
+    groups = get_groups()
+    groups_dict = {g["id"]: g.get("name", g["id"]) for g in groups}
+    current_children = get_children()
+    for c in current_children:
+        if c["id"] not in children_names:
+            children_names[c["id"]] = c.get("fullName", c["id"])
+        if c["id"] not in child_to_group:
+            child_to_group[c["id"]] = c.get("groupId")
+    top_by_actions = [
+        {
+            "childId": cid,
+            "fullName": children_names.get(cid, cid),
+            "actionsCount": cnt,
+            "groupName": groups_dict.get(child_to_group.get(cid), ""),
+        }
+        for cid, cnt in sorted(child_actions.items(), key=lambda x: -x[1])[:15]
+    ]
+
+    top_by_coins = sorted(children_snapshot, key=lambda c: -(c.get("balance") or 0))[:15]
+    top_by_coins = [
+        {
+            "childId": c.get("childId"),
+            "fullName": c.get("fullName", ""),
+            "balance": c.get("balance", 0),
+            "groupName": groups_dict.get(c.get("groupId"), ""),
+        }
+        for c in top_by_coins
+    ]
+
+    by_group = {}
+    for c in children_snapshot:
+        gid = c.get("groupId") or ""
+        if gid not in by_group:
+            by_group[gid] = {"groupId": gid, "groupName": groups_dict.get(gid, gid), "totalCoins": 0, "childrenCount": 0}
+        by_group[gid]["totalCoins"] += c.get("balance", 0)
+        by_group[gid]["childrenCount"] += 1
+    by_group_list = []
+    for g in by_group.values():
+        g["avgCoins"] = round(g["totalCoins"] / g["childrenCount"], 1) if g["childrenCount"] else 0
+        by_group_list.append(g)
+    by_group_list.sort(key=lambda x: -x["totalCoins"])
+
+    return {
+        "year": year,
+        "month": month,
+        "summary": {
+            "totalCoins": total_coins,
+            "totalActions": total_actions,
+            "avgCoinsPerChild": avg_coins,
+            "childrenCount": children_count,
+        },
+        "byAction": by_action_list,
+        "topChildrenByCoins": top_by_coins,
+        "topChildrenByActions": top_by_actions,
+        "byGroup": by_group_list,
+    }
 
 
 # --- Админы (JSON, вместо SQLite auth_user) ---

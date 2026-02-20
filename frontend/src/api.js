@@ -79,9 +79,22 @@ export async function adminChildEvents(childId, from, to) {
   return r.json()
 }
 
-export async function adminMonthlyResults() {
-  const r = await fetch(`${API_BASE}/admin/monthly-results`, fetchOpts('GET'))
+export async function adminMonthlyResults(groupId) {
+  const params = new URLSearchParams()
+  if (groupId) params.set('group_id', groupId)
+  const r = await fetch(`${API_BASE}/admin/monthly-results?${params}`, fetchOpts('GET'))
   if (!r.ok) throw new Error('Ошибка загрузки')
+  return r.json()
+}
+
+export async function adminMonthlyStats(year, month, groupId) {
+  const params = new URLSearchParams({ year: String(year), month: String(month) })
+  if (groupId) params.set('group_id', groupId)
+  const r = await fetch(`${API_BASE}/admin/monthly-stats?${params}`, fetchOpts('GET'))
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}))
+    throw new Error(data.error || 'Ошибка загрузки')
+  }
   return r.json()
 }
 

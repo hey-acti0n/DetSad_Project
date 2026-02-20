@@ -184,9 +184,29 @@ def admin_events(request):
 @permission_classes([IsAuthenticated])
 @authentication_classes([SessionAuthentication])
 def admin_monthly_results(request):
-    """GET /api/v1/admin/monthly-results — итоги по месяцам (после сброса баланса)."""
-    group_id = _educator_group_id(request)
-    data = storage.get_monthly_results(group_id=group_id)
+    """GET /api/v1/admin/monthly-results?group_id=... — итоги по месяцам (после сброса баланса)."""
+    group_id = request.GET.get("group_id") or _educator_group_id(request)
+    data = storage.get_monthly_results(group_id=group_id or None)
+    return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@authentication_classes([SessionAuthentication])
+def admin_monthly_stats(request):
+    """GET /api/v1/admin/monthly-stats?year=2025&month=10&group_id=... — расширенная статистика за месяц."""
+    group_id = request.GET.get("group_id") or _educator_group_id(request)
+    try:
+        year = int(request.GET.get("year", 0))
+        month = int(request.GET.get("month", 0))
+    except (TypeError, ValueError):
+        year = month = 0
+    if not year or not month or month < 1 or month > 12:
+        return Response(
+            {"error": "Нужны параметры year и month (1–12)"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    data = storage.get_monthly_stats(year=year, month=month, group_id=group_id or None)
     return Response(data)
 
 

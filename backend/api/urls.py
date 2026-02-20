@@ -14,6 +14,7 @@ urlpatterns = [
     path("admin/stats/children", views.admin_stats_children),
     path("admin/events", views.admin_events),
     path("admin/monthly-results", views.admin_monthly_results),
+    path("admin/monthly-stats", views.admin_monthly_stats),
     path("admin/child/<str:id>/events", views.admin_child_events),
     path("admin/child/<str:id>/balance-adjust", views.admin_balance_adjust),
     path("admin/groups", views.admin_groups_list),
